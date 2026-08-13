@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             GalleriaTheme {
-                val uiState by viewModel.uiState.collectAsState()
+                val hasPermission by viewModel.hasPermission.collectAsState()
 
                 val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Manifest.permission.READ_MEDIA_IMAGES
@@ -51,12 +51,12 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    val hasPermission = ContextCompat.checkSelfPermission(
+                    val isGranted = ContextCompat.checkSelfPermission(
                         this@MainActivity,
                         requiredPermission
                     ) == PackageManager.PERMISSION_GRANTED
 
-                    if (hasPermission) {
+                    if (isGranted) {
                         viewModel.onPermissionGranted()
                     } else {
                         viewModel.onPermissionDenied()
@@ -65,12 +65,10 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     PhotosGridScreen(
-                        uiState = uiState,
+                        hasPermission = hasPermission,
+                        photosPagingData = viewModel.photosPagingData,
                         onRequestPermission = {
                             permissionLauncher.launch(requiredPermission)
-                        },
-                        onRetry = {
-                            viewModel.loadPhotos()
                         },
                         modifier = Modifier.padding(innerPadding)
                     )

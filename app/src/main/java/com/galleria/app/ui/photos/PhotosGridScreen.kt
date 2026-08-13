@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -23,27 +21,40 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.PagingData
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
+import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import com.galleria.app.data.model.MediaItem
+import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun PhotosGridScreen(
-    uiState: PhotosUiState,
+    hasPermission: Boolean,
+    photosPagingData: Flow<PagingData<MediaItem>>,
     onRequestPermission: () -> Unit,
-    onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        when (uiState) {
-            is PhotosUiState.Loading -> {
+        if (!hasPermission) {
+            PermissionRequiredView(onRequestPermission = onRequestPermission)
+            return@Surface
+        }
+
+        val lazyPagingItems = photosPagingData.collectAsLazyPagingItems()
+
+        when {
+            // Initial load state
+            lazyPagingItems.loadState.refresh is LoadState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -52,52 +63,9 @@ fun PhotosGridScreen(
                 }
             }
 
-            is PhotosUiState.PermissionRequired -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Permission Required",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Galleria needs permission to access photos stored on your device.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = onRequestPermission) {
-                            Text("Grant Permission")
-                        }
-                    }
-                }
-            }
-
-            is PhotosUiState.Empty -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No photos found on device.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            is PhotosUiState.Error -> {
+            // Initial load error state
+            lazyPagingItems.loadState.refresh is LoadState.Error -> {
+                val error = (lazyPagingItems.loadState.refresh as LoadState.Error).error
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -115,20 +83,35 @@ fun PhotosGridScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = uiState.message,
+                            text = error.localizedMessage ?: "Failed to query MediaStore",
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onRetry) {
+                        Button(onClick = { lazyPagingItems.retry() }) {
                             Text("Retry")
                         }
                     }
                 }
             }
 
-            is PhotosUiState.Success -> {
+            // Empty state (Not loading and no items found)
+            lazyPagingItems.loadState.refresh is LoadState.NotLoading && lazyPagingItems.itemCount == 0 -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No photos found on device.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Success state - display paged grid
+            else -> {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
                     modifier = Modifier.fillMaxSize(),
@@ -137,13 +120,52 @@ fun PhotosGridScreen(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items(
-                        items = uiState.photos,
-                        key = { it.id },
-                        contentType = { "photo" }
-                    ) { photo ->
-                        PhotoTile(photo = photo)
+                        count = lazyPagingItems.itemCount,
+                        key = lazyPagingItems.itemKey { it.id },
+                        contentType = lazyPagingItems.itemContentType { "photo" }
+                    ) { index ->
+                        val photo = lazyPagingItems[index]
+                        if (photo != null) {
+                            PhotoTile(photo = photo)
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionRequiredView(
+    onRequestPermission: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Permission Required",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Galleria needs permission to access photos stored on your device.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = onRequestPermission) {
+                Text("Grant Permission")
             }
         }
     }

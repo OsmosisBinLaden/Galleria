@@ -3,44 +3,34 @@ package com.galleria.app.ui.photos
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.galleria.app.data.model.MediaItem
 import com.galleria.app.data.repository.MediaStoreRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 /**
- * ViewModel managing UI state and photo loading from MediaStore.
- * Inherits from AndroidViewModel to easily access Application context without complex DI.
+ * ViewModel managing permission state and paged photo stream from MediaStore.
  */
 class PhotosViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MediaStoreRepository(application.applicationContext)
 
-    private val _uiState = MutableStateFlow<PhotosUiState>(PhotosUiState.Loading)
-    val uiState: StateFlow<PhotosUiState> = _uiState.asStateFlow()
+    private val _hasPermission = MutableStateFlow(false)
+    val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
 
-    fun loadPhotos() {
-        viewModelScope.launch {
-            _uiState.value = PhotosUiState.Loading
-            try {
-                val photos = repository.getPhotos()
-                if (photos.isEmpty()) {
-                    _uiState.value = PhotosUiState.Empty
-                } else {
-                    _uiState.value = PhotosUiState.Success(photos)
-                }
-            } catch (e: Exception) {
-                _uiState.value = PhotosUiState.Error(e.localizedMessage ?: "Failed to load photos")
-            }
-        }
-    }
+    val photosPagingData: Flow<PagingData<MediaItem>> = repository
+        .getPhotosPagingData()
+        .cachedIn(viewModelScope)
 
     fun onPermissionGranted() {
-        loadPhotos()
+        _hasPermission.value = true
     }
 
     fun onPermissionDenied() {
-        _uiState.value = PhotosUiState.PermissionRequired
+        _hasPermission.value = false
     }
 }
