@@ -106,12 +106,12 @@ class GalleriaDatabaseTest {
         val ref = AlbumMediaCrossRef(albumId = albumId, mediaId = 500L, volumeName = "external_primary", addedAt = 1000L)
         crossRefDao.insert(ref)
 
-        // Re-inserting same (albumId, mediaId, volumeName) replaces record without error
+        // Re-inserting same (albumId, mediaId, volumeName) ignores duplicate record and preserves original addedAt timestamp
         val updatedRef = AlbumMediaCrossRef(albumId = albumId, mediaId = 500L, volumeName = "external_primary", addedAt = 2000L)
         crossRefDao.insert(updatedRef)
 
         val paged = crossRefDao.getMediaKeysForAlbumPaged(albumId, limit = 10, offset = 0)
         assertEquals(1, paged.size)
-        assertEquals(2000L, paged[0].addedAt)
+        assertEquals(1000L, paged[0].addedAt)
     }
 }

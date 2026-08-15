@@ -4,6 +4,7 @@ import androidx.room3.Dao
 import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
+import androidx.room3.Transaction
 import com.galleria.app.data.local.entity.AlbumMediaCrossRef
 import kotlinx.coroutines.flow.Flow
 
@@ -13,19 +14,31 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface AlbumMediaCrossRefDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(crossRef: AlbumMediaCrossRef): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(crossRefs: List<AlbumMediaCrossRef>): List<Long>
+
+    @Transaction
+    suspend fun addMediaToAlbumTransactional(crossRefs: List<AlbumMediaCrossRef>): List<Long> {
+        return insertAll(crossRefs)
+    }
 
     @Query("DELETE FROM album_media_cross_ref WHERE albumId = :albumId AND mediaId = :mediaId AND volumeName = :volumeName")
     suspend fun removeMediaFromAlbum(albumId: Long, mediaId: Long, volumeName: String): Int
 
-    @Query("SELECT * FROM album_media_cross_ref WHERE albumId = :albumId ORDER BY addedAt DESC LIMIT :limit OFFSET :offset")
+    @Transaction
+    suspend fun removeOrphansTransactional(albumId: Long, orphans: List<AlbumMediaCrossRef>) {
+        orphans.forEach { orphan ->
+            removeMediaFromAlbum(albumId, orphan.mediaId, orphan.volumeName)
+        }
+    }
+
+    @Query("SELECT * FROM album_media_cross_ref WHERE albumId = :albumId ORDER BY addedAt DESC, volumeName ASC, mediaId DESC LIMIT :limit OFFSET :offset")
     suspend fun getMediaKeysForAlbumPaged(albumId: Long, limit: Int, offset: Int): List<AlbumMediaCrossRef>
 
-    @Query("SELECT * FROM album_media_cross_ref WHERE albumId = :albumId ORDER BY addedAt DESC")
+    @Query("SELECT * FROM album_media_cross_ref WHERE albumId = :albumId ORDER BY addedAt DESC, volumeName ASC, mediaId DESC")
     fun getMediaKeysForAlbum(albumId: Long): Flow<List<AlbumMediaCrossRef>>
 
     @Query("SELECT EXISTS(SELECT 1 FROM album_media_cross_ref WHERE albumId = :albumId AND mediaId = :mediaId AND volumeName = :volumeName)")
