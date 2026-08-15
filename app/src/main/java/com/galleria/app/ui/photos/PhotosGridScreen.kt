@@ -1,18 +1,12 @@
 package com.galleria.app.ui.photos
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -21,17 +15,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
-import coil3.compose.AsyncImage
 import com.galleria.app.data.model.MediaItem
+import com.galleria.app.ui.components.PagedMediaGrid
 import kotlinx.coroutines.flow.Flow
 
 @Composable
@@ -110,26 +101,12 @@ fun PhotosGridScreen(
                 }
             }
 
-            // Success state - display paged grid
+            // Success state - display paged grid using reusable PagedMediaGrid
             else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(
-                        count = lazyPagingItems.itemCount,
-                        key = lazyPagingItems.itemKey { it.id },
-                        contentType = lazyPagingItems.itemContentType { "photo" }
-                    ) { index ->
-                        val photo = lazyPagingItems[index]
-                        if (photo != null) {
-                            PhotoTile(photo = photo)
-                        }
-                    }
-                }
+                PagedMediaGrid(
+                    lazyPagingItems = lazyPagingItems,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }
@@ -168,25 +145,5 @@ private fun PermissionRequiredView(
                 Text("Grant Permission")
             }
         }
-    }
-}
-
-@Composable
-private fun PhotoTile(
-    photo: MediaItem,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        AsyncImage(
-            model = photo.contentUri,
-            contentDescription = photo.displayName,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
     }
 }
