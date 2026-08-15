@@ -14,13 +14,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import com.galleria.app.ui.folders.FoldersViewModel
 import com.galleria.app.ui.navigation.MainScreen
 import com.galleria.app.ui.photos.PhotosViewModel
 import com.galleria.app.ui.theme.GalleriaTheme
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: PhotosViewModel by viewModels()
+    private val photosViewModel: PhotosViewModel by viewModels()
+    private val foldersViewModel: FoldersViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,7 +30,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             GalleriaTheme {
-                val hasPermission by viewModel.hasPermission.collectAsState()
+                val hasPermission by photosViewModel.hasPermission.collectAsState()
 
                 val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Manifest.permission.READ_MEDIA_IMAGES
@@ -40,9 +42,11 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.RequestPermission()
                 ) { isGranted ->
                     if (isGranted) {
-                        viewModel.onPermissionGranted()
+                        photosViewModel.onPermissionGranted()
+                        foldersViewModel.onPermissionGranted()
                     } else {
-                        viewModel.onPermissionDenied()
+                        photosViewModel.onPermissionDenied()
+                        foldersViewModel.onPermissionDenied()
                     }
                 }
 
@@ -53,18 +57,21 @@ class MainActivity : ComponentActivity() {
                     ) == PackageManager.PERMISSION_GRANTED
 
                     if (isGranted) {
-                        viewModel.onPermissionGranted()
+                        photosViewModel.onPermissionGranted()
+                        foldersViewModel.onPermissionGranted()
                     } else {
-                        viewModel.onPermissionDenied()
+                        photosViewModel.onPermissionDenied()
+                        foldersViewModel.onPermissionDenied()
                     }
                 }
 
                 MainScreen(
                     hasPermission = hasPermission,
-                    photosPagingData = viewModel.photosPagingData,
+                    photosPagingData = photosViewModel.photosPagingData,
                     onRequestPermission = {
                         permissionLauncher.launch(requiredPermission)
-                    }
+                    },
+                    foldersViewModel = foldersViewModel
                 )
             }
         }

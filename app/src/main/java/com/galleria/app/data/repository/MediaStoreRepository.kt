@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Repository responsible for providing paged photo streams and physical folder discovery
@@ -31,7 +32,7 @@ import kotlinx.coroutines.withContext
  */
 class MediaStoreRepository(private val context: Context) {
 
-    private var currentPagingSource: MediaStorePagingSource? = null
+    private val activePagingSources = ConcurrentHashMap.newKeySet<MediaStorePagingSource>()
 
     /**
      * Creates a paged Flow of MediaItems for the main timeline.
@@ -45,8 +46,8 @@ class MediaStoreRepository(private val context: Context) {
                 enablePlaceholders = false
             ),
             pagingSourceFactory = {
-                MediaStorePagingSource(context).also {
-                    currentPagingSource = it
+                MediaStorePagingSource(context).also { source ->
+                    activePagingSources.add(source)
                 }
             }
         ).flow
@@ -63,15 +64,20 @@ class MediaStoreRepository(private val context: Context) {
                 maxSize = 420,
                 enablePlaceholders = false
             ),
-            pagingSourceFactory = { MediaStorePagingSource(context, folderKey) }
+            pagingSourceFactory = {
+                MediaStorePagingSource(context, folderKey).also { source ->
+                    activePagingSources.add(source)
+                }
+            }
         ).flow
     }
 
     /**
-     * Invalidates the active PagingSource, prompting Paging 3 to refresh.
+     * Invalidates all active PagingSources, prompting Paging 3 to refresh active streams.
      */
     fun invalidatePagingSource() {
-        currentPagingSource?.invalidate()
+        activePagingSources.forEach { it.invalidate() }
+        activePagingSources.clear()
     }
 
     /**
