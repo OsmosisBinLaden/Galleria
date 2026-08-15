@@ -9,15 +9,18 @@ import android.provider.MediaStore
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.galleria.app.data.model.MediaItem
+import com.galleria.app.data.model.MediaStoreFolderKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
  * PagingSource that queries MediaStore in paged chunks to handle large libraries
  * without loading thousands of items into memory simultaneously.
+ * Supports optional filtering by volume-aware MediaStoreFolderKey.
  */
 class MediaStorePagingSource(
-    private val context: Context
+    private val context: Context,
+    private val folderKey: MediaStoreFolderKey? = null
 ) : PagingSource<Int, MediaItem>() {
 
     override fun getRefreshKey(state: PagingState<Int, MediaItem>): Int? {
@@ -36,6 +39,12 @@ class MediaStorePagingSource(
 
                 val photos = mutableListOf<MediaItem>()
 
+                val targetUri = if (folderKey != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Images.Media.getContentUri(folderKey.volumeName)
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
+
                 val projection = arrayOf(
                     MediaStore.Images.Media._ID,
                     MediaStore.Images.Media.DISPLAY_NAME,
@@ -47,7 +56,6 @@ class MediaStorePagingSource(
                     MediaStore.Images.Media.MIME_TYPE
                 )
 
-                // TODO: Evaluate Android 16 MediaStore.QUERY_ARG_MEDIA_STANDARD_SORT_ORDER based on INFERRED_DATE for future timeline grouping.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val queryArgs = Bundle().apply {
                         putInt(ContentResolver.QUERY_ARG_LIMIT, pageSize)
@@ -60,21 +68,51 @@ class MediaStorePagingSource(
                             ContentResolver.QUERY_ARG_SORT_DIRECTION,
                             ContentResolver.QUERY_SORT_DIRECTION_DESCENDING
                         )
+
+                        if (folderKey != null) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                putString(
+                                    ContentResolver.QUERY_ARG_SQL_SELECTION,
+                                    "${MediaStore.Images.Media.VOLUME_NAME} = ? AND ${MediaStore.Images.Media.BUCKET_ID} = ?"
+                                )
+                                putStringArray(
+                                    ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                                    arrayOf(folderKey.volumeName, folderKey.bucketId.toString())
+                                )
+                            } else {
+                                putString(
+                                    ContentResolver.QUERY_ARG_SQL_SELECTION,
+                                    "${MediaStore.Images.Media.BUCKET_ID} = ?"
+                                )
+                                putStringArray(
+                                    ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                                    arrayOf(folderKey.bucketId.toString())
+                                )
+                            }
+                        }
                     }
 
                     context.contentResolver.query(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        targetUri,
                         projection,
                         queryArgs,
                         null
                     )
                 } else {
+                    val selection = if (folderKey != null) {
+                        "${MediaStore.Images.Media.BUCKET_ID} = ?"
+                    } else null
+
+                    val selectionArgs = if (folderKey != null) {
+                        arrayOf(folderKey.bucketId.toString())
+                    } else null
+
                     val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC, ${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT $pageSize OFFSET $offset"
                     context.contentResolver.query(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        targetUri,
                         projection,
-                        null,
-                        null,
+                        selection,
+                        selectionArgs,
                         sortOrder
                     )
                 }?.use { cursor ->
@@ -99,10 +137,7 @@ class MediaStorePagingSource(
                         val height = cursor.getInt(heightColumn)
                         val mimeType = cursor.getString(mimeTypeColumn) ?: "image/*"
 
-                        val contentUri = ContentUris.withAppendedId(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                            id
-                        )
+                        val contentUri = ContentUris.withAppendedId(targetUri, id)
 
                         photos.add(
                             MediaItem(
